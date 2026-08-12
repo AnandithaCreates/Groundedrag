@@ -1,0 +1,20 @@
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+langgraph==0.2.45
+sentence-transformers==3.2.1
+numpy==1.26.4
+python-dotenv==1.0.1
+pydantic==2.9.2
+
+# Named stack pieces
+qdrant-client==1.12.1
+portkey-ai==1.10.0
+
+# Eval extras (evals/run_evals_ragas.py only -- evals/run_evals.py needs none of these).
+# Pinned as a known-compatible set; install in a clean venv (see README) to
+# avoid the dependency conflicts that show up in environments with other
+# langchain-family packages already installed.
+ragas==0.2.15
+datasets==3.1.0
+langchain-groq==0.2.1
+langchain-community==0.3.7

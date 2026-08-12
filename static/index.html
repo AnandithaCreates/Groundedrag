@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>GroundedRAG</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+
+  <link
+    rel="preconnect"
+    href="https://fonts.gstatic.com"
+    crossorigin
+  >
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  >
+
+  <link
+    rel="stylesheet"
+    href="/static/style.css"
+  >
+
+</head>
+
+
+<body>
+
+  <div class="app">
+
+
+    <!-- =========================
+         SIDEBAR
+         ========================= -->
+
+    <aside class="sidebar">
+
+
+      <div class="brand">
+
+        <div class="brand-logo">
+          G
+        </div>
+
+        <div>
+
+          <div class="brand-name">
+            GroundedRAG
+          </div>
+
+          <div class="brand-tag">
+            KNOWLEDGE INTELLIGENCE
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <button
+        class="new-chat"
+        id="newChat"
+      >
+
+        <span class="plus">
+          +
+        </span>
+
+        <span>
+          New conversation
+        </span>
+
+      </button>
+
+
+      <div>
+
+        <div class="sidebar-label">
+          Workspace
+        </div>
+
+
+        <button
+          class="nav-item active"
+        >
+
+          <span class="nav-icon">
+            ✦
+          </span>
+
+          Chat
+
+        </button>
+
+
+        <button class="nav-item">
+
+          <span class="nav-icon">
+            ◈
+          </span>
+
+          Knowledge base
+
+        </button>
+
+
+        <button class="nav-item">
+
+          <span class="nav-icon">
+            ◉
+          </span>
+
+          Evaluations
+
+        </button>
+
+      </div>
+
+
+      <div>
+
+        <div class="sidebar-label">
+          Recent queries
+        </div>
+
+
+        <div
+          class="history"
+          id="history"
+        >
+
+          <div
+            class="history-item history-empty"
+            style="color: var(--muted-2); cursor: default;"
+          >
+            No queries yet
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div class="sidebar-bottom">
+
+        <div class="system-status">
+
+          <span class="status-dot"></span>
+
+          <span>
+            Retrieval system online
+          </span>
+
+        </div>
+
+      </div>
+
+
+    </aside>
+
+
+    <!-- =========================
+         MAIN
+         ========================= -->
+
+    <section class="main">
+
+
+      <header class="topbar">
+
+        <div class="topbar-title">
+
+          <strong>
+            Knowledge Assistant
+          </strong>
+
+          <span>
+            / grounded search
+          </span>
+
+        </div>
+
+
+        <div class="live-pill">
+
+          <span class="live-dot"></span>
+
+          SYSTEM LIVE
+
+        </div>
+
+      </header>
+
+
+      <!-- =========================
+           CHAT
+           ========================= -->
+
+      <main id="thread">
+
+        <div
+          class="thread-inner"
+          id="threadInner"
+        >
+
+
+          <section
+            class="welcome"
+            id="welcome"
+          >
+
+            <div class="welcome-orb">
+
+              <span>
+                ✦
+              </span>
+
+            </div>
+
+
+            <h1>
+
+              Your knowledge.
+
+              <span class="gradient-text">
+                Grounded.
+              </span>
+
+            </h1>
+
+
+            <p>
+
+              Ask questions across your indexed documents.
+              GroundedRAG retrieves relevant evidence before
+              generating an answer, keeping responses tied
+              to your actual knowledge base.
+
+            </p>
+
+
+            <div class="suggestions">
+
+
+              <button class="suggestion">
+
+                <span class="suggestion-icon">
+                  ☁ CLOUD
+                </span>
+
+                <span class="suggestion-text">
+                  What is the default Cloud Run concurrency?
+                </span>
+
+              </button>
+
+
+              <button class="suggestion">
+
+                <span class="suggestion-icon">
+                  ⚡ CONFIG
+                </span>
+
+                <span class="suggestion-text">
+                  What are the key Cloud Run configuration options?
+                </span>
+
+              </button>
+
+
+              <button class="suggestion">
+
+                <span class="suggestion-icon">
+                  ◈ API
+                </span>
+
+                <span class="suggestion-text">
+                  How does the API gateway handle requests?
+                </span>
+
+              </button>
+
+
+              <button class="suggestion">
+
+                <span class="suggestion-icon">
+                  ◉ LIMITS
+                </span>
+
+                <span class="suggestion-text">
+                  What deployment limits should I know about?
+                </span>
+
+              </button>
+
+
+            </div>
+
+          </section>
+
+
+        </div>
+
+      </main>
+
+
+      <!-- =========================
+           COMPOSER
+           ========================= -->
+
+      <footer class="composer-area">
+
+        <div class="composer">
+
+
+          <form id="form">
+
+            <div class="composer-box">
+
+
+              <input
+                id="input"
+                type="text"
+                placeholder="Ask your knowledge base..."
+                autocomplete="off"
+              >
+
+
+              <button
+                id="send"
+                type="submit"
+                aria-label="Send"
+              >
+                ↗
+              </button>
+
+
+            </div>
+
+          </form>
+
+
+          <p class="hint">
+
+            GROUNDED MODE · RETRIEVAL + CITATIONS ENABLED
+
+          </p>
+
+
+        </div>
+
+      </footer>
+
+
+    </section>
+
+
+  </div>
+
+
+  <script src="/static/app.js"></script>
+
+</body>
+
+</html>
