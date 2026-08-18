@@ -17,7 +17,7 @@ class Settings:
 
     GROQ_MODEL: str = os.getenv(
         "GROQ_MODEL",
-        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-20b",
     )
 
     PORTKEY_API_KEY: str = os.getenv(

@@ -1,3 +1,18 @@
+"""
+GroundedRAG Query Planner
+
+The planner decides how a user query should be handled before
+retrieval. It does not generate the final answer.
+
+Supported query types:
+    factual
+    procedural
+    comparative
+    analytical
+    multi_hop
+    conversational
+"""
+
 import json
 
 from app.llm_client import chat_completion
@@ -7,14 +22,14 @@ PLANNER_PROMPT = """
 You are the query intelligence module of an enterprise document
 intelligence system.
 
-Analyze ONLY the user's question provided at the bottom.
+Analyze ONLY the user question at the bottom of this prompt.
 
-Return ONLY one valid JSON object.
-Do not write explanations before or after the JSON.
-Do not use Markdown.
+Return exactly ONE valid JSON object.
+Do not return Markdown.
 Do not use ```json fences.
+Do not write anything before or after the JSON.
 
-Choose exactly ONE query_type:
+Choose exactly one query_type:
 
 - factual
   A question asking for a specific fact, value, definition, or setting.
@@ -27,56 +42,69 @@ Choose exactly ONE query_type:
   configurations, or approaches.
 
 - analytical
-  A question requiring interpretation, reasoning, tradeoffs,
-  consequences, or implications based on the indexed documents.
+  A question requiring interpretation, tradeoffs, consequences,
+  or implications based on indexed documents.
 
 - multi_hop
-  A question requiring information about multiple concepts or
-  multiple documents before an answer can be constructed.
+  A question requiring information from multiple concepts or documents.
 
 - conversational
   A follow-up question that depends on previous conversation context.
 
-Generate these fields:
+Return this JSON structure:
 
-1. query_type
-2. search_query
-   A concise query optimized for document retrieval.
+{
+  "query_type": "factual",
+  "search_query": "optimized retrieval query",
+  "sub_queries": [
+    "retrieval query"
+  ],
+  "requires_multiple_sources": false,
+  "reasoning": "short retrieval strategy explanation"
+}
 
-3. sub_queries
-   Break the question into 1-4 focused retrieval queries.
-   For a simple factual question, use one query.
-   For comparative or multi-hop questions, use multiple queries.
+Rules for sub_queries:
 
-4. requires_multiple_sources
-   true if the answer should combine evidence from multiple
-   concepts or documents, otherwise false.
-
-5. reasoning
-   A short explanation of the retrieval strategy.
+- Factual: exactly 1 query.
+- Procedural: 1 or 2 queries.
+- Comparative: exactly 2 queries when two concepts are being compared.
+- Analytical: at most 2 queries.
+- Multi-hop: at most 2 queries.
+- Conversational: use 1 retrieval query based on the current question
+  and conversation context.
+- Never generate more than 2 sub_queries.
+- Do not invent concepts that are not relevant to the user question.
 
 Example:
 
 {
   "query_type": "comparative",
-  "search_query": "Cloud Run deployment methods and Terraform operational risks",
+  "search_query": "Cloud Run deployment methods vs Terraform operational risks",
   "sub_queries": [
     "Cloud Run deployment methods",
     "Terraform operational risks"
   ],
   "requires_multiple_sources": true,
-  "reasoning": "Retrieve evidence about both Cloud Run deployment methods and Terraform operational risks before comparing them."
+  "reasoning": "Retrieve evidence for both concepts before comparison."
 }
 
 USER QUESTION:
-{query}
+
+<<USER_QUERY>>
 """
 
 
-def _fallback_plan(query: str, reason: str) -> dict:
-    """
-    Safe fallback when the planner LLM returns invalid JSON.
-    """
+VALID_QUERY_TYPES = {
+    "factual",
+    "procedural",
+    "comparative",
+    "analytical",
+    "multi_hop",
+    "conversational",
+}
+
+
+def _fallback(query: str, reason: str) -> dict:
     return {
         "query_type": "factual",
         "search_query": query,
@@ -86,101 +114,154 @@ def _fallback_plan(query: str, reason: str) -> dict:
     }
 
 
+def _extract_json(raw: str) -> dict:
+    """
+    Parse the model output even if it accidentally adds text or
+    Markdown around the JSON object.
+    """
+
+    text = raw.strip()
+
+    # Remove Markdown fences.
+    if text.startswith("```"):
+        lines = text.splitlines()
+
+        if lines and lines[0].strip().startswith("```"):
+            lines = lines[1:]
+
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+
+        text = "\n".join(lines).strip()
+
+    # First try direct JSON parsing.
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Recover the first complete JSON object.
+    start = text.find("{")
+    end = text.rfind("}")
+
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("Planner returned no JSON object.")
+
+    return json.loads(
+        text[start : end + 1]
+    )
+
+
+def _validate(plan: dict, original_query: str) -> dict:
+    query_type = plan.get(
+        "query_type",
+        "factual",
+    )
+
+    if query_type not in VALID_QUERY_TYPES:
+        query_type = "factual"
+
+    search_query = plan.get(
+        "search_query",
+        original_query,
+    )
+
+    if not isinstance(search_query, str):
+        search_query = original_query
+
+    search_query = search_query.strip()
+
+    sub_queries = plan.get(
+        "sub_queries",
+        [],
+    )
+
+    if not isinstance(sub_queries, list):
+        sub_queries = []
+
+    sub_queries = [
+        item.strip()
+        for item in sub_queries
+        if isinstance(item, str)
+        and item.strip()
+    ]
+
+    # Hard limit. No fourth mystery query.
+    sub_queries = sub_queries[:2]
+
+    if not sub_queries:
+        sub_queries = [search_query]
+
+    requires_multiple_sources = bool(
+        plan.get(
+            "requires_multiple_sources",
+            len(sub_queries) > 1,
+        )
+    )
+
+    reasoning = plan.get(
+        "reasoning",
+        "",
+    )
+
+    if not isinstance(reasoning, str):
+        reasoning = ""
+
+    return {
+        "query_type": query_type,
+        "search_query": search_query,
+        "sub_queries": sub_queries,
+        "requires_multiple_sources": (
+            requires_multiple_sources
+        ),
+        "reasoning": reasoning,
+    }
+
+
 def plan_query(query: str) -> dict:
     """
-    Use the LLM to classify and decompose the user's query
-    into retrieval-friendly queries.
+    Generate a structured retrieval plan.
+
+    IMPORTANT:
+    The prompt uses a custom <<USER_QUERY>> placeholder instead of
+    Python str.format(), so JSON braces inside the prompt can never
+    cause a KeyError.
     """
 
-    prompt = PLANNER_PROMPT.format(query=query)
+    query = query.strip()
+
+    if not query:
+        return _fallback(
+            "",
+            "empty query",
+        )
+
+    prompt = PLANNER_PROMPT.replace(
+        "<<USER_QUERY>>",
+        query,
+    )
 
     try:
-        raw = chat_completion(
+        response = chat_completion(
             prompt,
             temperature=0,
             max_tokens=180,
         )
 
-        # Remove accidental Markdown fences if the model adds them.
-        cleaned = raw.strip()
+        plan = _extract_json(response)
 
-        if cleaned.startswith("```"):
-            lines = cleaned.splitlines()
-
-            # Remove first line: ```json / ```
-            if lines and lines[0].startswith("```"):
-                lines = lines[1:]
-
-            # Remove final ```
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-
-            cleaned = "\n".join(lines).strip()
-
-        # Parse JSON.
-        plan = json.loads(cleaned)
-
-        # Basic validation.
-        allowed_types = {
-            "factual",
-            "procedural",
-            "comparative",
-            "analytical",
-            "multi_hop",
-            "conversational",
-        }
-
-        if plan.get("query_type") not in allowed_types:
-            raise ValueError(
-                f"Invalid query_type: {plan.get('query_type')}"
-            )
-
-        if not isinstance(plan.get("search_query"), str):
-            raise ValueError("search_query must be a string")
-
-        if not isinstance(plan.get("sub_queries"), list):
-            raise ValueError("sub_queries must be a list")
-
-        if not plan["sub_queries"]:
-            plan["sub_queries"] = [query]
-
-        if not isinstance(
-            plan.get("requires_multiple_sources"),
-            bool,
-        ):
-            raise ValueError(
-                "requires_multiple_sources must be boolean"
-            )
-
-        if not isinstance(plan.get("reasoning"), str):
-            plan["reasoning"] = "Planner generated retrieval strategy."
-
-        return plan
-
-    except json.JSONDecodeError as exc:
-        print(f"[PLANNER ERROR] JSONDecodeError: {exc}")
-
-        # Try extracting the JSON object if the model added
-        # accidental text before/after it.
-        try:
-            start = raw.find("{")
-            end = raw.rfind("}")
-
-            if start != -1 and end != -1 and end > start:
-                extracted = raw[start : end + 1]
-                plan = json.loads(extracted)
-
-                print("[PLANNER] Recovered JSON from model output.")
-
-                return plan
-
-        except Exception as recovery_error:
-            print(
-                f"[PLANNER RECOVERY ERROR] {recovery_error}"
-            )
-
-        return _fallback_plan(query, "JSONDecodeError")
+        return _validate(
+            plan,
+            query,
+        )
 
     except Exception as exc:
-        print(f"[PLANNER ERROR] {type(exc).__name__}: {exc}")
-        return _fallback_plan(query, type(exc).__name__)
+        print(
+            f"[PLANNER ERROR] "
+            f"{type(exc).__name__}: {exc}"
+        )
+
+        return _fallback(
+            query,
+            type(exc).__name__,
+        )

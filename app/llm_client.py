@@ -13,9 +13,16 @@ just a resume line:
 Portkey exposes an OpenAI-compatible client, so this reads almost like a
 normal OpenAI SDK call once you've supplied the virtual key.
 """
+import time
+
 from portkey_ai import Portkey
 
 from app.config import settings
+from app.evaluation_throttle import (
+    get_evaluation_throttle,
+    retry_delay,
+    transient_status_code,
+)
 
 _client = None
 
@@ -32,14 +39,30 @@ def get_client() -> Portkey:
 
 def chat_completion(prompt: str, temperature: float = 0.2, max_tokens: int = 500) -> str:
     client = get_client()
-    resp = client.chat.completions.create(
-        model=settings.GROQ_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=temperature,
-        max_tokens=max_tokens,
-        # Enables Portkey's gateway-level cache. On a cache hit, Portkey
-        # returns the stored response without forwarding to Groq at all --
-        # this is what "gateway-level caching" means concretely.
-        config={"cache": {"mode": settings.PORTKEY_CACHE_MODE}},
-    )
-    return resp.choices[0].message.content.strip()
+    throttle = get_evaluation_throttle()
+
+    for attempt in range((throttle.max_retries if throttle else 0) + 1):
+        reservation = (
+            throttle.before_request(prompt, max_tokens)
+            if throttle else None
+        )
+        try:
+            resp = client.chat.completions.create(
+                model=settings.GROQ_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                max_tokens=max_tokens,
+                # Enables Portkey's gateway-level cache. On a cache hit, Portkey
+                # returns the stored response without forwarding to Groq at all.
+                config={"cache": {"mode": settings.PORTKEY_CACHE_MODE}},
+            )
+            if throttle and reservation:
+                throttle.record(reservation, response=resp)
+            return (resp.choices[0].message.content or "").strip()
+        except Exception as exc:
+            if throttle and reservation:
+                throttle.record(reservation, error=exc)
+            transient = transient_status_code(exc) in {408, 429, 500, 502, 503, 504}
+            if not throttle or not transient or attempt >= throttle.max_retries:
+                raise
+            time.sleep(retry_delay(attempt))

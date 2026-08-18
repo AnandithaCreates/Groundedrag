@@ -13,7 +13,7 @@ resource "google_cloud_run_v2_service" "groundedrag" {
 
       env {
         name  = "GROQ_MODEL"
-        value = "llama-3.3-70b-versatile"
+        value = var.groq_model
       }
       env {
         name  = "PORTKEY_API_KEY"

@@ -15,6 +15,12 @@ variable "service_name" {
   default     = "groundedrag"
 }
 
+variable "groq_model" {
+  description = "Groq model requested through the Portkey virtual key"
+  type        = string
+  default     = "openai/gpt-oss-20b"
+}
+
 variable "container_image" {
   description = "Full path to the container image, e.g. gcr.io/PROJECT/groundedrag:latest"
   type        = string
